@@ -1,81 +1,59 @@
 # Appsnap
 
-**Snap any app into your cursor.**
+**Capture the window behind. Paste it at your cursor.**
 
-Appsnap is a generic macOS CLI designed to run as a silent Raycast Script Command.
+Appsnap is a pure Raycast extension for macOS. Assign it a hotkey and invoke it while your cursor is in the field where you want an image attached.
 
-- If a text field is focused, it captures the first useful window behind the focused app and pastes the image back into that field.
-- Otherwise, it captures the current window, checks up to three previous apps for a focused text field, and pastes into the first match.
-- If no valid target is found, the screenshot remains on the clipboard.
-- No app names or target-app lists are hardcoded.
+Appsnap then:
+
+1. remembers the app that was frontmost when invoked;
+2. finds that app's frontmost normal window in macOS window order;
+3. captures the first normal window directly behind it;
+4. pastes the resulting PNG at the original cursor using Raycast's clipboard API.
+
+There is no window picker, app-name configuration, Swift helper, package installer, or synthetic `Command-V`.
 
 ## Requirements
 
 - macOS
-- Swift 6 / Xcode Command Line Tools
-- Accessibility and Screen Recording permission for the responsible launcher, usually Raycast
+- Raycast
+- Node.js and pnpm for local development
+- Screen Recording permission for Raycast
 
-## Build
-
-```bash
-swift build -c release
-```
-
-## Inspect safely
+## Development
 
 ```bash
-swift run Appsnap --dry-run --verbose
+pnpm install
+pnpm dev
 ```
 
-Dry-run needs Accessibility to inspect the focused element but does not capture or paste.
+Raycast opens the local extension development workflow. Assign a direct hotkey to **Appsnap** for the intended experience.
 
-## Install with the macOS installer
-
-Open `Appsnap-Installer.pkg` and follow the normal macOS installer. It installs:
-
-- the Appsnap executable under `/Library/Application Support/Appsnap/`
-- `Appsnap.sh` under `~/Documents/Raycast Script Commands/`
-
-Then add that Script Commands directory in Raycast if needed, find **Appsnap**, and assign a direct global hotkey. The package is currently unsigned, so macOS may require right-clicking it and choosing **Open**.
-
-To build the installer from source:
+## Verify
 
 ```bash
-./scripts/build-installer.sh
+pnpm lint
+pnpm build
 ```
 
-## Install from source for Raycast
+## How it works
 
-```bash
-./scripts/install.sh
-```
+The TypeScript command uses `getFrontmostApplication()` to remember the paste target. A bundled JXA script calls `CGWindowListCopyWindowInfo` to inspect generic macOS window z-order and returns the first normal window behind the target. `/usr/sbin/screencapture` saves that window as a PNG, then `Clipboard.paste({ file })` pastes it through Raycast.
 
-Or provide your Raycast Script Commands directory:
+The JXA filter uses window properties only:
 
-```bash
-./scripts/install.sh "$HOME/path/to/script-commands"
-```
+- on-screen and not a desktop element;
+- layer `0`;
+- visible alpha;
+- valid window and owner IDs;
+- minimum size `120 × 80`.
 
-Then:
+No app names are hardcoded.
 
-1. Add that Script Commands directory in Raycast settings if needed.
-2. Find **Appsnap** in Raycast.
-3. Assign a direct global hotkey.
-4. Grant Raycast Accessibility and Screen Recording permissions.
+## Deliberate simplification
 
-The command uses `@raycast.mode silent` to avoid opening a Raycast result window.
+Appsnap assumes you invoke it while the destination cursor is already active. It does not inspect Accessibility text-field roles. If the destination does not accept image/file paste, the receiving app decides what happens.
 
-## Options
+## Distribution
 
-```text
---dry-run
---copy-only
---paste-delay SECONDS
---candidate-delay SECONDS
---max-candidates COUNT
---verbose
-```
-
-## Known risk to verify
-
-Raycast may briefly affect application focus even in silent mode. Run `appsnap --dry-run --verbose` from the intended launcher and confirm it reports the app/text field that was focused before invoking the command. If Raycast becomes the detected focus target, a Raycast extension or non-focus-stealing hotkey launcher will be needed.
+The project is structured as a standard Raycast extension and can be tested locally before submitting it for Raycast Store review.
