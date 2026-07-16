@@ -11,13 +11,17 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const MAX_CAPTURE_AGE_MS = 24 * 60 * 60 * 1000;
-const ACTIVATION_DELAY_MS = 700;
+const ACTIVATION_DELAY_MS = 1200;
 
 type WindowInfo = {
   id: number;
   pid: number;
   owner: string;
   title: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 };
 
 type FocusInfo = {
@@ -27,6 +31,7 @@ type FocusInfo = {
   subrole?: string;
   roleDescription?: string;
   isTextInput: boolean;
+  activeWindowVerified?: boolean;
 };
 
 type WindowContext = {
@@ -56,38 +61,56 @@ async function removeOldCaptures(directory: string) {
   );
 }
 
-async function runJxa<T>(...arguments_: string[]): Promise<T> {
+async function runJxa<T>(timeout: number, ...arguments_: string[]): Promise<T> {
   const scriptPath = join(environment.assetsPath, "window-behind.js");
-  const { stdout } = await execFileAsync("/usr/bin/osascript", [
-    "-l",
-    "JavaScript",
-    scriptPath,
-    ...arguments_,
-  ]);
+  const { stdout } = await execFileAsync(
+    "/usr/bin/osascript",
+    ["-l", "JavaScript", scriptPath, ...arguments_],
+    { timeout, killSignal: "SIGKILL" },
+  );
 
   return JSON.parse(stdout.trim()) as T;
 }
 
 async function inspectContext(bundleId: string) {
-  return runJxa<WindowContext>("inspect", bundleId);
+  return runJxa<WindowContext>(3000, "inspect", bundleId);
 }
 
-async function inspectFocus() {
-  return runJxa<FocusResult>("focus");
+function windowArguments(window: WindowInfo) {
+  return [
+    String(window.pid),
+    String(window.id),
+    window.title,
+    String(window.x),
+    String(window.y),
+    String(window.width),
+    String(window.height),
+  ];
 }
 
-async function activateWindowOwner(pid: number) {
-  return runJxa<ActivationResult>("activate", String(pid));
+async function inspectFocus(window: WindowInfo) {
+  return runJxa<FocusResult>(2200, "focus-active", ...windowArguments(window));
+}
+
+async function activateWindow(window: WindowInfo) {
+  return runJxa<ActivationResult>(1800, "activate", ...windowArguments(window));
 }
 
 async function captureWindow(window: WindowInfo, capturePath: string) {
-  await execFileAsync("/usr/sbin/screencapture", [
-    "-x",
-    "-o",
-    "-l",
-    String(window.id),
-    capturePath,
-  ]);
+  const arguments_ = ["-x", "-o", "-l", String(window.id), capturePath];
+  try {
+    await execFileAsync("/usr/sbin/screencapture", arguments_, {
+      timeout: 2000,
+      killSignal: "SIGKILL",
+    });
+  } catch {
+    await rm(capturePath, { force: true });
+    await wait(150);
+    await execFileAsync("/usr/sbin/screencapture", arguments_, {
+      timeout: 2000,
+      killSignal: "SIGKILL",
+    });
+  }
 }
 
 function wait(milliseconds: number) {
@@ -104,6 +127,7 @@ export default async function command() {
     }
 
     const context = await inspectContext(bundleId);
+
     if (context.error || !context.target || !context.focus) {
       await showHUD(
         `Appsnap: ${context.error ?? "Could not inspect the current window."}`,
@@ -112,7 +136,9 @@ export default async function command() {
     }
 
     if (!context.focus.trusted) {
-      await showHUD("Appsnap needs Accessibility permission for Raycast.");
+      await showHUD(
+        "Appsnap needs Accessibility and Automation permissions for Raycast.",
+      );
       return;
     }
 
@@ -135,24 +161,39 @@ export default async function command() {
     }
 
     await captureWindow(context.target, capturePath);
-    const activation = await activateWindowOwner(behind.pid);
+    const activation = await activateWindow(behind);
+
     if (activation.activated) {
       await wait(ACTIVATION_DELAY_MS);
-      const { focus } = await inspectFocus();
-      if (focus?.trusted && focus.isTextInput) {
+      const { focus } = await inspectFocus(behind);
+
+      if (
+        focus?.trusted &&
+        focus.activeWindowVerified &&
+        focus.pid === behind.pid &&
+        focus.isTextInput
+      ) {
         await Clipboard.paste({ file: capturePath });
+
         await showHUD(`Appsnap: pasted into ${behind.owner}`);
         return;
       }
     }
 
-    await activateWindowOwner(context.target.pid);
     await Clipboard.copy({ file: capturePath });
-    await showHUD(
-      "Appsnap: returned to the original window; screenshot copied.",
-    );
+    const restoration = await activateWindow(context.target);
+    if (restoration.activated) {
+      await showHUD(
+        "Appsnap: returned to the original window; screenshot copied.",
+      );
+    } else {
+      await showHUD(
+        "Appsnap: screenshot copied, but the original window could not be restored.",
+      );
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
+
     await showHUD(`Appsnap failed: ${message}`);
   }
 }

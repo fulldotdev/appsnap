@@ -18,8 +18,9 @@ There is no window picker, app-name configuration, Swift helper, package install
 - macOS
 - Raycast
 - Node.js and pnpm for local development
-- Accessibility permission for Raycast, used to inspect focused elements and activate candidate apps
+- Accessibility permission for Raycast, used to inspect focused elements and activate the exact candidate window
 - Screen Recording permission for Raycast, used to capture windows
+- Automation permission for Raycast to control System Events; macOS asks for this on first use
 
 ## Development
 
@@ -39,11 +40,12 @@ pnpm build
 
 ## How it works
 
-The TypeScript command uses `getFrontmostApplication()` to remember the current app. A bundled JXA script calls both Accessibility and `CGWindowListCopyWindowInfo` to inspect the focused element and generic macOS window z-order. `/usr/sbin/screencapture` saves the selected source window as a PNG, then Raycast either pastes it with `Clipboard.paste({ file })` or leaves it on the clipboard when no valid text destination is found.
+The TypeScript command uses `getFrontmostApplication()` to remember the current app. A bundled JXA script uses System Events for focused-element inspection and exact window activation, and `CGWindowListCopyWindowInfo` for generic macOS window z-order. `/usr/sbin/screencapture` saves the selected source window as a PNG, then Raycast either pastes it with `Clipboard.paste({ file })` or leaves it on the clipboard when no valid text destination is found.
 
 The JXA filter uses window properties only:
 
 - on-screen and not a desktop element;
+- owned by a regular foreground application (accessory and daemon surfaces are excluded);
 - layer `0`;
 - visible alpha;
 - valid window and owner IDs;
