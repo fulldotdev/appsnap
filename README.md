@@ -4,12 +4,11 @@
 
 Appsnap is a pure Raycast extension for macOS. Assign it a hotkey and invoke it while your cursor is in the field where you want an image attached.
 
-Appsnap then:
+Appsnap then chooses the direction automatically:
 
-1. remembers the app that was frontmost when invoked;
-2. finds that app's frontmost normal window in macOS window order;
-3. captures the first normal window directly behind it;
-4. pastes the resulting PNG at the original cursor using Raycast's clipboard API.
+- If the current window has a focused text field, it captures the first normal window behind it and pastes the PNG at the current cursor.
+- If the current window has no focused text field, it captures the current window, activates up to three windows behind it, and pastes into the first one that restores a focused text field.
+- If no valid destination is found, Appsnap copies the screenshot to the clipboard without speculative pastes.
 
 There is no window picker, app-name configuration, Swift helper, package installer, or synthetic `Command-V`.
 
@@ -18,7 +17,8 @@ There is no window picker, app-name configuration, Swift helper, package install
 - macOS
 - Raycast
 - Node.js and pnpm for local development
-- Screen Recording permission for Raycast
+- Accessibility permission for Raycast, used to inspect focused elements and activate candidate apps
+- Screen Recording permission for Raycast, used to capture windows
 
 ## Development
 
@@ -38,7 +38,7 @@ pnpm build
 
 ## How it works
 
-The TypeScript command uses `getFrontmostApplication()` to remember the paste target. A bundled JXA script calls `CGWindowListCopyWindowInfo` to inspect generic macOS window z-order and returns the first normal window behind the target. `/usr/sbin/screencapture` saves that window as a PNG, then `Clipboard.paste({ file })` pastes it through Raycast.
+The TypeScript command uses `getFrontmostApplication()` to remember the current app. A bundled JXA script calls both Accessibility and `CGWindowListCopyWindowInfo` to inspect the focused element and generic macOS window z-order. `/usr/sbin/screencapture` saves the selected source window as a PNG, then Raycast either pastes it with `Clipboard.paste({ file })` or leaves it on the clipboard when no valid text destination is found.
 
 The JXA filter uses window properties only:
 
@@ -49,10 +49,6 @@ The JXA filter uses window properties only:
 - minimum size `120 × 80`.
 
 No app names are hardcoded.
-
-## Deliberate simplification
-
-Appsnap assumes you invoke it while the destination cursor is already active. It does not inspect Accessibility text-field roles. If the destination does not accept image/file paste, the receiving app decides what happens.
 
 ## Distribution
 
