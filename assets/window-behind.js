@@ -22,6 +22,79 @@ function axString(element, attribute) {
   return String(ObjC.unwrap(value));
 }
 
+function axBoolean(element, attribute) {
+  const value = axValue(element, attribute);
+  return value ? Boolean(ObjC.unwrap(value)) : false;
+}
+
+function axElements(element, attribute) {
+  const value = axValue(element, attribute);
+  if (!value) return [];
+
+  const array = ObjC.castRefToObject(value);
+  const count = Number(array.count);
+  if (!Number.isFinite(count)) return [];
+
+  const elements = [];
+  for (let index = 0; index < count; index += 1) {
+    elements.push(array.objectAtIndex(index));
+  }
+  return elements;
+}
+
+function hasSelectedTextRange(element) {
+  const namesRef = Ref();
+  const error = $.AXUIElementCopyAttributeNames(element, namesRef);
+  if (Number(error) !== 0 || !namesRef[0]) return false;
+
+  const names = ObjC.deepUnwrap(ObjC.castRefToObject(namesRef[0])) || [];
+  return names.includes("AXSelectedTextRange");
+}
+
+function textElementTraits(element) {
+  const role = axString(element, "AXRole");
+  const subrole = axString(element, "AXSubrole");
+  const roleDescription = axString(element, "AXRoleDescription").toLowerCase();
+  const selectedTextRange = hasSelectedTextRange(element);
+  const isTextInput =
+    TEXT_ROLES.has(role) ||
+    TEXT_ROLES.has(subrole) ||
+    roleDescription.includes("text field") ||
+    roleDescription.includes("text area") ||
+    roleDescription.includes("search field") ||
+    selectedTextRange;
+
+  return { role, subrole, roleDescription, selectedTextRange, isTextInput };
+}
+
+function findRememberedTextElement(application) {
+  const roots = [];
+  const focusedWindow = axValue(application, "AXFocusedWindow");
+  const mainWindow = axValue(application, "AXMainWindow");
+  if (focusedWindow) roots.push(focusedWindow);
+  if (mainWindow) roots.push(mainWindow);
+  roots.push(...axElements(application, "AXWindows"));
+
+  const queue = roots;
+  let fallback = null;
+  let visited = 0;
+
+  while (queue.length > 0 && visited < 1500) {
+    const element = queue.shift();
+    visited += 1;
+
+    const traits = textElementTraits(element);
+    if (traits.isTextInput) {
+      if (axBoolean(element, "AXFocused")) return element;
+      if (!fallback && traits.selectedTextRange) fallback = element;
+    }
+
+    queue.push(...axElements(element, "AXChildren"));
+  }
+
+  return fallback;
+}
+
 function focusedElementInfo(expectedPID) {
   const trusted = Boolean($.AXIsProcessTrusted());
   if (!trusted) {
@@ -31,7 +104,16 @@ function focusedElementInfo(expectedPID) {
   const root = expectedPID
     ? $.AXUIElementCreateApplication(Number(expectedPID))
     : $.AXUIElementCreateSystemWide();
-  const focused = axValue(root, "AXFocusedUIElement");
+  let focused = axValue(root, "AXFocusedUIElement");
+  let remembered = false;
+  if ((!focused || !textElementTraits(focused).isTextInput) && expectedPID) {
+    const rememberedElement = findRememberedTextElement(root);
+    if (rememberedElement) {
+      focused = rememberedElement;
+      remembered = true;
+    }
+  }
+
   if (!focused) {
     return { trusted: true, isTextInput: false };
   }
@@ -39,33 +121,16 @@ function focusedElementInfo(expectedPID) {
   const pidRef = Ref();
   const pidError = $.AXUIElementGetPid(focused, pidRef);
   const pid = Number(pidError) === 0 ? Number(pidRef[0]) : null;
-  const role = axString(focused, "AXRole");
-  const subrole = axString(focused, "AXSubrole");
-  const roleDescription = axString(focused, "AXRoleDescription").toLowerCase();
-
-  let hasSelectedTextRange = false;
-  const namesRef = Ref();
-  const namesError = $.AXUIElementCopyAttributeNames(focused, namesRef);
-  if (Number(namesError) === 0 && namesRef[0]) {
-    const names = ObjC.deepUnwrap(ObjC.castRefToObject(namesRef[0])) || [];
-    hasSelectedTextRange = names.includes("AXSelectedTextRange");
-  }
-
-  const isTextInput =
-    TEXT_ROLES.has(role) ||
-    TEXT_ROLES.has(subrole) ||
-    roleDescription.includes("text field") ||
-    roleDescription.includes("text area") ||
-    roleDescription.includes("search field") ||
-    hasSelectedTextRange;
+  const traits = textElementTraits(focused);
 
   return {
     trusted: true,
     pid,
-    role,
-    subrole,
-    roleDescription,
-    isTextInput,
+    role: traits.role,
+    subrole: traits.subrole,
+    roleDescription: traits.roleDescription,
+    isTextInput: traits.isTextInput,
+    remembered,
   };
 }
 
