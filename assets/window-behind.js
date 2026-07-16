@@ -128,21 +128,12 @@ function inspect(bundleIdentifier) {
   }
 
   const target = windows[targetIndex];
-  const candidates = [];
-  const seenPIDs = new Set();
-
-  for (const window of windows.slice(targetIndex + 1)) {
-    const pid = Number(window.kCGWindowOwnerPID);
-    if (seenPIDs.has(pid)) continue;
-    seenPIDs.add(pid);
-    candidates.push(serializeWindow(window));
-    if (candidates.length === 3) break;
-  }
+  const behind = windows[targetIndex + 1];
 
   return {
     focus: focusedElementInfo(targetPID),
     target: serializeWindow(target),
-    candidates,
+    behind: behind ? serializeWindow(behind) : null,
   };
 }
 

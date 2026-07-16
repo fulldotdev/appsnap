@@ -32,7 +32,7 @@ type FocusInfo = {
 type WindowContext = {
   focus?: FocusInfo;
   target?: WindowInfo;
-  candidates?: WindowInfo[];
+  behind?: WindowInfo | null;
   error?: string;
 };
 
@@ -76,6 +76,10 @@ async function inspectFocus() {
   return runJxa<FocusResult>("focus");
 }
 
+async function inspectAppFocus(pid: number) {
+  return runJxa<FocusResult>("focus", String(pid));
+}
+
 async function activateWindowOwner(pid: number) {
   return runJxa<ActivationResult>("activate", String(pid));
 }
@@ -116,10 +120,20 @@ export default async function command() {
       return;
     }
 
-    const candidates = context.candidates ?? [];
-    if (candidates.length === 0) {
-      await showHUD("Appsnap: no window was found behind the current app.");
+    const behind = context.behind;
+    if (!behind) {
+      await showHUD("Appsnap: no window was found directly behind this app.");
       return;
+    }
+
+    if (!context.focus.isTextInput) {
+      const { focus: rememberedFocus } = await inspectAppFocus(behind.pid);
+      if (!rememberedFocus?.trusted || !rememberedFocus.isTextInput) {
+        await showHUD(
+          "Appsnap: the window behind has no remembered text cursor.",
+        );
+        return;
+      }
     }
 
     const captureDirectory = join(environment.supportPath, "captures");
@@ -128,30 +142,29 @@ export default async function command() {
     const capturePath = join(captureDirectory, `appsnap-${Date.now()}.png`);
 
     if (context.focus.isTextInput) {
-      const sourceWindow = candidates[0];
-      await captureWindow(sourceWindow, capturePath);
+      await captureWindow(behind, capturePath);
       await Clipboard.paste({ file: capturePath });
-      await showHUD(`Appsnap: pasted ${sourceWindow.owner}`);
+      await showHUD(`Appsnap: pasted ${behind.owner}`);
       return;
     }
 
     await captureWindow(context.target, capturePath);
-
-    for (const candidate of candidates) {
-      const activation = await activateWindowOwner(candidate.pid);
-      if (!activation.activated) continue;
-
+    const activation = await activateWindowOwner(behind.pid);
+    if (activation.activated) {
       await wait(ACTIVATION_DELAY_MS);
       const { focus } = await inspectFocus();
       if (focus?.trusted && focus.isTextInput) {
         await Clipboard.paste({ file: capturePath });
-        await showHUD(`Appsnap: pasted into ${candidate.owner}`);
+        await showHUD(`Appsnap: pasted into ${behind.owner}`);
         return;
       }
     }
 
+    await activateWindowOwner(context.target.pid);
     await Clipboard.copy({ file: capturePath });
-    await showHUD("Appsnap: screenshot copied; no focused text field found.");
+    await showHUD(
+      "Appsnap: returned to the original window; screenshot copied.",
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     await showHUD(`Appsnap failed: ${message}`);
