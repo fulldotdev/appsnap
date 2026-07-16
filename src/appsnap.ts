@@ -116,11 +116,6 @@ export default async function command() {
       return;
     }
 
-    if (context.focus.pid !== context.target.pid) {
-      await showHUD("Appsnap could not verify the focused window. Try again.");
-      return;
-    }
-
     const candidates = context.candidates ?? [];
     if (candidates.length === 0) {
       await showHUD("Appsnap: no window was found behind the current app.");
@@ -148,7 +143,7 @@ export default async function command() {
 
       await wait(ACTIVATION_DELAY_MS);
       const { focus } = await inspectFocus(candidate.pid);
-      if (focus?.trusted && focus.pid === candidate.pid && focus.isTextInput) {
+      if (focus?.trusted && focus.isTextInput) {
         await Clipboard.paste({ file: capturePath });
         await showHUD(`Appsnap: pasted into ${candidate.owner}`);
         return;
