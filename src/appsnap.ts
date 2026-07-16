@@ -11,7 +11,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const MAX_CAPTURE_AGE_MS = 24 * 60 * 60 * 1000;
-const ACTIVATION_DELAY_MS = 400;
+const ACTIVATION_DELAY_MS = 700;
 
 type WindowInfo = {
   id: number;
@@ -72,8 +72,8 @@ async function inspectContext(bundleId: string) {
   return runJxa<WindowContext>("inspect", bundleId);
 }
 
-async function inspectFocus(pid: number) {
-  return runJxa<FocusResult>("focus", String(pid));
+async function inspectFocus() {
+  return runJxa<FocusResult>("focus");
 }
 
 async function activateWindowOwner(pid: number) {
@@ -142,7 +142,7 @@ export default async function command() {
       if (!activation.activated) continue;
 
       await wait(ACTIVATION_DELAY_MS);
-      const { focus } = await inspectFocus(candidate.pid);
+      const { focus } = await inspectFocus();
       if (focus?.trusted && focus.isTextInput) {
         await Clipboard.paste({ file: capturePath });
         await showHUD(`Appsnap: pasted into ${candidate.owner}`);
