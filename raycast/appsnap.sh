@@ -12,10 +12,16 @@
 
 set -euo pipefail
 
-BIN="${APPSNAP_BIN:-$HOME/.local/bin/appsnap}"
+if [[ -n "${APPSNAP_BIN:-}" ]]; then
+  BIN="$APPSNAP_BIN"
+elif [[ -x "/Library/Application Support/Appsnap/appsnap" ]]; then
+  BIN="/Library/Application Support/Appsnap/appsnap"
+else
+  BIN="$HOME/.local/bin/appsnap"
+fi
 
 if [[ ! -x "$BIN" ]]; then
-  echo "Appsnap is not installed at $BIN" >&2
+  echo "Appsnap executable was not found." >&2
   exit 1
 fi
 

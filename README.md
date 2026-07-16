@@ -29,7 +29,22 @@ swift run Appsnap --dry-run --verbose
 
 Dry-run needs Accessibility to inspect the focused element but does not capture or paste.
 
-## Install for Raycast
+## Install with the macOS installer
+
+Open `Appsnap-Installer.pkg` and follow the normal macOS installer. It installs:
+
+- the Appsnap executable under `/Library/Application Support/Appsnap/`
+- `Appsnap.sh` under `~/Documents/Raycast Script Commands/`
+
+Then add that Script Commands directory in Raycast if needed, find **Appsnap**, and assign a direct global hotkey. The package is currently unsigned, so macOS may require right-clicking it and choosing **Open**.
+
+To build the installer from source:
+
+```bash
+./scripts/build-installer.sh
+```
+
+## Install from source for Raycast
 
 ```bash
 ./scripts/install.sh

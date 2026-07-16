@@ -1,0 +1,19 @@
+#!/bin/bash
+set -euo pipefail
+
+APP_SUPPORT="/Library/Application Support/Appsnap"
+CONSOLE_USER="$(/usr/bin/stat -f '%Su' /dev/console)"
+
+if [[ -z "$CONSOLE_USER" || "$CONSOLE_USER" == "root" || "$CONSOLE_USER" == "loginwindow" ]]; then
+  exit 0
+fi
+
+USER_HOME="$(/usr/bin/dscl . -read "/Users/$CONSOLE_USER" NFSHomeDirectory | /usr/bin/cut -d' ' -f2-)"
+RAYCAST_DIR="$USER_HOME/Documents/Raycast Script Commands"
+
+/bin/mkdir -p "$RAYCAST_DIR"
+/bin/cp "$APP_SUPPORT/Appsnap.sh" "$RAYCAST_DIR/Appsnap.sh"
+/bin/chmod 755 "$RAYCAST_DIR/Appsnap.sh"
+/usr/sbin/chown -R "$CONSOLE_USER":staff "$RAYCAST_DIR"
+
+exit 0
