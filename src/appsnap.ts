@@ -76,10 +76,6 @@ async function inspectFocus() {
   return runJxa<FocusResult>("focus");
 }
 
-async function inspectAppFocus(pid: number) {
-  return runJxa<FocusResult>("focus", String(pid));
-}
-
 async function activateWindowOwner(pid: number) {
   return runJxa<ActivationResult>("activate", String(pid));
 }
@@ -124,16 +120,6 @@ export default async function command() {
     if (!behind) {
       await showHUD("Appsnap: no window was found directly behind this app.");
       return;
-    }
-
-    if (!context.focus.isTextInput) {
-      const { focus: rememberedFocus } = await inspectAppFocus(behind.pid);
-      if (!rememberedFocus?.trusted || !rememberedFocus.isTextInput) {
-        await showHUD(
-          "Appsnap: the window behind has no remembered text cursor.",
-        );
-        return;
-      }
     }
 
     const captureDirectory = join(environment.supportPath, "captures");

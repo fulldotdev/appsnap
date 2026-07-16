@@ -7,9 +7,9 @@ Appsnap is a pure Raycast extension for macOS. Assign it a hotkey and invoke it 
 Appsnap then chooses the direction automatically:
 
 - If the current window has a focused text field, it captures the first normal window behind it and pastes the PNG at the current cursor.
-- If the current window has no focused text field, it checks only the window directly behind without activating it. If that window remembers a text cursor, Appsnap captures the current window, activates the window behind, confirms the restored focus, and pastes there.
-- If the direct-behind window has no remembered text cursor, Appsnap stays in the current window and does nothing.
-- If focus restoration fails after activation, Appsnap returns to the original window and copies the screenshot to the clipboard.
+- If the current window has no focused text field, it captures the current window and activates only the window directly behind it. It then confirms whether a text field restored focus and pastes there.
+- If the direct-behind window does not restore a text cursor, Appsnap returns to the original window instead of searching deeper.
+- On that fallback, Appsnap leaves the screenshot on the clipboard.
 
 There is no window picker, app-name configuration, Swift helper, package installer, or synthetic `Command-V`.
 
