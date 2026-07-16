@@ -72,8 +72,8 @@ async function inspectContext(bundleId: string) {
   return runJxa<WindowContext>("inspect", bundleId);
 }
 
-async function inspectFocus() {
-  return runJxa<FocusResult>("focus");
+async function inspectFocus(pid: number) {
+  return runJxa<FocusResult>("focus", String(pid));
 }
 
 async function activateWindowOwner(pid: number) {
@@ -147,7 +147,7 @@ export default async function command() {
       if (!activation.activated) continue;
 
       await wait(ACTIVATION_DELAY_MS);
-      const { focus } = await inspectFocus();
+      const { focus } = await inspectFocus(candidate.pid);
       if (focus?.trusted && focus.pid === candidate.pid && focus.isTextInput) {
         await Clipboard.paste({ file: capturePath });
         await showHUD(`Appsnap: pasted into ${candidate.owner}`);

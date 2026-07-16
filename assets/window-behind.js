@@ -22,14 +22,16 @@ function axString(element, attribute) {
   return String(ObjC.unwrap(value));
 }
 
-function focusedElementInfo() {
+function focusedElementInfo(expectedPID) {
   const trusted = Boolean($.AXIsProcessTrusted());
   if (!trusted) {
     return { trusted: false, isTextInput: false };
   }
 
-  const system = $.AXUIElementCreateSystemWide();
-  const focused = axValue(system, "AXFocusedUIElement");
+  const root = expectedPID
+    ? $.AXUIElementCreateApplication(Number(expectedPID))
+    : $.AXUIElementCreateSystemWide();
+  const focused = axValue(root, "AXFocusedUIElement");
   if (!focused) {
     return { trusted: true, isTextInput: false };
   }
@@ -138,7 +140,7 @@ function inspect(bundleIdentifier) {
   }
 
   return {
-    focus: focusedElementInfo(),
+    focus: focusedElementInfo(targetPID),
     target: serializeWindow(target),
     candidates,
   };
@@ -165,7 +167,7 @@ function run(argv) {
   }
 
   if (mode === "focus") {
-    return JSON.stringify({ focus: focusedElementInfo() });
+    return JSON.stringify({ focus: focusedElementInfo(argv[1]) });
   }
 
   if (mode === "activate") {
