@@ -1,58 +1,70 @@
 # Appsnap
 
-**Capture the window behind. Paste it at your cursor.**
+**Snap any app into your cursor.**
 
-Appsnap is a pure Raycast extension for macOS. Assign it a hotkey and invoke it while your cursor is in the field where you want an image attached.
+Appsnap is a native local macOS helper launched by a thin Raycast extension.
 
-Appsnap then chooses the direction automatically:
+- If the current window has a verified text cursor, Appsnap captures the normal window directly behind it and pastes the image at the current cursor.
+- Otherwise, Appsnap captures the current window, activates only the directly-behind window, and pastes only when that exact window and a text cursor are verified.
+- If verification fails, Appsnap restores the original window and leaves the screenshot on the clipboard.
+- It never searches a second or third background candidate.
 
-- If the current window has a focused text field, it captures the first normal window behind it and pastes the PNG at the current cursor.
-- If the current window has no focused text field, it captures the current window and activates only the window directly behind it. It then confirms whether a text field restored focus and pastes there.
-- If the direct-behind window does not restore a text cursor, Appsnap returns to the original window instead of searching deeper.
-- On that fallback, Appsnap leaves the screenshot on the clipboard.
+There is no window picker, app-name configuration, Apple Developer account, Developer ID signing, notarization, installer package, or synthetic app-specific behavior.
 
-There is no window picker, app-name configuration, Swift helper, package installer, or synthetic `Command-V`.
+## How it is installed
 
-## Requirements
+The repository contains:
 
-- macOS
-- Raycast
-- Node.js and pnpm for local development
-- Accessibility permission for Raycast, used to inspect focused elements and activate the exact candidate window
-- Screen Recording permission for Raycast, used to capture windows
-- Automation permission for Raycast to control System Events; macOS asks for this on first use
+- a native Swift helper at `Sources/Appsnap/Appsnap.swift`;
+- a standard Raycast no-view command that launches `~/.local/bin/appsnap`;
+- `scripts/install-helper.sh`, which builds the helper locally and copies it there.
+
+Install or update the helper:
+
+```bash
+./scripts/install-helper.sh
+```
+
+The binary is built on this Mac with Swift Package Manager. Because it is built locally and never distributed as a downloaded executable, no Apple account, certificate, Developer ID signing, or notarization is required. Swift may add a local ad-hoc linker signature; that does not use or contact an Apple account.
+
+## Raycast shortcut
+
+Run `pnpm dev`, find **Appsnap** in Raycast, and assign it a direct global hotkey. The Raycast command is intentionally thin: it only launches the native helper and shows its result.
+
+## Permissions
+
+Grant **Raycast**:
+
+- Accessibility, for exact focus/window verification and Command-V;
+- Screen & System Audio Recording, for window capture.
+
+No System Events Automation permission is needed by the native helper.
 
 ## Development
 
 ```bash
 pnpm install
+./scripts/install-helper.sh
 pnpm dev
 ```
 
-Raycast opens the local extension development workflow. Assign a direct hotkey to **Appsnap** for the intended experience.
-
-## Verify
+## Verification
 
 ```bash
+swift build -c release
+~/.local/bin/appsnap --dry-run --verbose
 pnpm lint
 pnpm build
 ```
 
-## How it works
+## CLI options
 
-The TypeScript command uses `getFrontmostApplication()` to remember the current app. A bundled JXA script uses System Events for focused-element inspection and exact window activation, and `CGWindowListCopyWindowInfo` for generic macOS window z-order. `/usr/sbin/screencapture` saves the selected source window as a PNG, then Raycast either pastes it with `Clipboard.paste({ file })` or leaves it on the clipboard when no valid text destination is found.
+```text
+--dry-run
+--copy-only
+--activation-delay SECONDS
+--paste-delay SECONDS
+--verbose
+```
 
-The JXA filter uses window properties only:
-
-- on-screen and not a desktop element;
-- owned by a regular foreground application (accessory and daemon surfaces are excluded);
-- layer `0`;
-- visible alpha;
-- valid window and owner IDs;
-- minimum size `120 × 80`.
-
-No app names are hardcoded.
-
-## Distribution
-
-The project is structured as a standard Raycast extension and can be tested locally before submitting it for Raycast Store review.
+The helper uses CoreGraphics for front-to-back window order and direct window capture, and the native Accessibility API for cursor inspection and exact-window raising. Paste is dispatched only after the destination window and text cursor have both been verified.
