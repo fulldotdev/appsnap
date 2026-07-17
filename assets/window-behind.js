@@ -7,6 +7,14 @@ const TEXT_ROLES = new Set([
   "AXComboBox",
   "AXSearchField",
 ]);
+const NON_TEXT_CONTAINER_ROLES = new Set([
+  "AXApplication",
+  "AXGroup",
+  "AXLayoutArea",
+  "AXScrollArea",
+  "AXWebArea",
+  "AXWindow",
+]);
 const GEOMETRY_TOLERANCE = 3;
 
 function systemEventsAttribute(element, name) {
@@ -34,6 +42,12 @@ function enableSystemEventsAccessibility(process) {
   }
 }
 
+function accessibilityBoolean(element, name) {
+  const value = optionalSystemEventsAttribute(element, name);
+  if (value === true || value === 1) return true;
+  return String(value).toLowerCase() === "true";
+}
+
 function textElementTraits(element) {
   const role = String(systemEventsAttribute(element, "AXRole") || "");
   const subrole = String(systemEventsAttribute(element, "AXSubrole") || "");
@@ -41,20 +55,31 @@ function textElementTraits(element) {
     systemEventsAttribute(element, "AXRoleDescription") || "",
   ).toLowerCase();
   const selectedTextRange =
-    systemEventsAttribute(element, "AXSelectedTextRange") !== null;
-  const isTextInput =
+    optionalSystemEventsAttribute(element, "AXSelectedTextRange") !== null;
+  const editable = accessibilityBoolean(element, "AXEditable");
+  const focused = accessibilityBoolean(element, "AXFocused");
+  const explicitTextRole =
     TEXT_ROLES.has(role) ||
     TEXT_ROLES.has(subrole) ||
     roleDescription.includes("text field") ||
     roleDescription.includes("text area") ||
-    roleDescription.includes("search field") ||
-    selectedTextRange;
+    roleDescription.includes("search field");
+  const selectedRangeTextInput =
+    selectedTextRange &&
+    !NON_TEXT_CONTAINER_ROLES.has(role) &&
+    !NON_TEXT_CONTAINER_ROLES.has(subrole);
+  const isTextInput =
+    explicitTextRole ||
+    (editable && (focused || selectedTextRange)) ||
+    selectedRangeTextInput;
 
   return {
     role,
     subrole,
     roleDescription,
     selectedTextRange,
+    editable,
+    focused,
     isTextInput,
   };
 }
