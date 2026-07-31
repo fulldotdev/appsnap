@@ -4,6 +4,12 @@ import CoreGraphics
 import Foundation
 import ScreenCaptureKit
 
+@_silgen_name("_AXUIElementGetWindow")
+private func AXUIElementGetWindowID(
+    _ element: AXUIElement,
+    _ identifier: UnsafeMutablePointer<CGWindowID>
+) -> AXError
+
 struct Options {
     var dryRun = false
     var copyOnly = false
@@ -31,6 +37,7 @@ struct FocusInfo {
     let role: String
     let isTextInput: Bool
     let frame: CGRect?
+    let windowID: CGWindowID?
 }
 
 enum AppsnapError: LocalizedError {
@@ -274,16 +281,51 @@ enum FocusInspector {
             pid: pid,
             role: role,
             isTextInput: isTextInput,
-            frame: frame(of: element)
+            frame: frame(of: element),
+            windowID: windowID(of: element)
         )
     }
 
     static func belongsToWindow(_ focus: FocusInfo, window: WindowInfo) -> Bool {
+        if let focusedWindowID = focus.windowID {
+            return focusedWindowID == window.id
+        }
+        guard process(focus.pid, belongsToOwner: window.ownerPID) else {
+            return false
+        }
+
         if let frame = focus.frame {
             let expanded = window.bounds.insetBy(dx: -4, dy: -4)
             return expanded.contains(CGPoint(x: frame.midX, y: frame.midY))
         }
-        return focus.pid == window.ownerPID
+        return true
+    }
+
+    private static func process(_ focusPID: pid_t, belongsToOwner ownerPID: pid_t) -> Bool {
+        if focusPID == ownerPID { return true }
+        guard let owner = NSRunningApplication(processIdentifier: ownerPID),
+              let focus = NSRunningApplication(processIdentifier: focusPID)
+        else { return false }
+
+        if let ownerBundleID = owner.bundleIdentifier,
+           let focusBundleID = focus.bundleIdentifier,
+           (focusBundleID == ownerBundleID || focusBundleID.hasPrefix(ownerBundleID + "."))
+        {
+            return true
+        }
+
+        guard let ownerRoot = owner.bundleURL?.standardizedFileURL.path,
+              let focusExecutable = focus.executableURL?.standardizedFileURL.path
+        else { return false }
+        return focusExecutable.hasPrefix(ownerRoot + "/Contents/")
+    }
+
+    static func windowID(of element: AXUIElement) -> CGWindowID? {
+        var identifier = CGWindowID.zero
+        guard AXUIElementGetWindowID(element, &identifier) == .success,
+              identifier != 0
+        else { return nil }
+        return identifier
     }
 
     static func elementAttribute(_ element: AXUIElement, _ attribute: String) -> AXUIElement? {
@@ -436,6 +478,11 @@ enum WindowActivator {
         guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value) == .success,
               let windows = value as? [AXUIElement]
         else { return nil }
+
+        let identifierMatches = windows.filter {
+            FocusInspector.windowID(of: $0) == expected.id
+        }
+        if identifierMatches.count == 1 { return identifierMatches[0] }
 
         let numberMatches = windows.filter {
             FocusInspector.numberAttribute($0, "AXWindowNumber") == Int(expected.id)
