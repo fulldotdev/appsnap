@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import Carbon
 import CoreGraphics
 import Foundation
 import ScreenCaptureKit
@@ -11,6 +12,7 @@ private func AXUIElementGetWindowID(
 ) -> AXError
 
 struct Options {
+    var runOnce = false
     var dryRun = false
     var copyOnly = false
     var verbose = false
@@ -66,16 +68,48 @@ enum AppsnapError: LocalizedError {
     }
 }
 
+enum AppsnapHotKey {
+    static let signature = OSType(
+        UInt32(UInt8(ascii: "A")) << 24
+            | UInt32(UInt8(ascii: "p")) << 16
+            | UInt32(UInt8(ascii: "S")) << 8
+            | UInt32(UInt8(ascii: "n"))
+    )
+    static let identifier = UInt32(1)
+}
+
 @main
-struct Appsnap {
+final class Appsnap: NSObject, NSApplicationDelegate {
+    private var statusItem: NSStatusItem?
+    private var hotKeyRef: EventHotKeyRef?
+    private var eventHandlerRef: EventHandlerRef?
+    private var isRunningCapture = false
+
     static func main() async {
+        let options = parseOptions()
+        if options.runOnce {
+            await runOnce(options: options)
+            return
+        }
+
+        await MainActor.run {
+            let app = NSApplication.shared
+            let delegate = Appsnap()
+            app.delegate = delegate
+            app.setActivationPolicy(.accessory)
+            withExtendedLifetime(delegate) {
+                app.run()
+            }
+        }
+    }
+
+    static func runOnce(options: Options) async {
         let watchdog = Task.detached(priority: .background) {
             try? await Task.sleep(nanoseconds: 12_000_000_000)
             if !Task.isCancelled { _exit(124) }
         }
         defer { watchdog.cancel() }
 
-        let options = parseOptions()
         do {
             let result = try await run(options: options)
             print(result)
@@ -86,6 +120,171 @@ struct Appsnap {
             fputs("\(result)\n", stderr)
             exit(1)
         }
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Task { @MainActor in
+            setupStatusMenu()
+        }
+        installHotKey()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if let hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+        }
+        if let eventHandlerRef {
+            RemoveEventHandler(eventHandlerRef)
+        }
+    }
+
+    @MainActor
+    private func setupStatusMenu() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.button?.title = "Appsnap"
+
+        let menu = NSMenu()
+        let runItem = NSMenuItem(
+            title: "Run Appsnap",
+            action: #selector(runFromMenu),
+            keyEquivalent: "s"
+        )
+        runItem.keyEquivalentModifierMask = [.command, .option]
+        runItem.target = self
+        menu.addItem(runItem)
+        let shortcutItem = NSMenuItem(
+            title: "Global hotkey: ⌥⌘S",
+            action: nil,
+            keyEquivalent: ""
+        )
+        shortcutItem.isEnabled = false
+        menu.addItem(shortcutItem)
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(NSMenuItem(
+            title: "Open Accessibility Settings",
+            action: #selector(openAccessibilitySettings),
+            keyEquivalent: ""
+        ))
+        menu.addItem(NSMenuItem(
+            title: "Open Screen Recording Settings",
+            action: #selector(openScreenRecordingSettings),
+            keyEquivalent: ""
+        ))
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(NSMenuItem(
+            title: "Quit Appsnap",
+            action: #selector(quit),
+            keyEquivalent: "q"
+        ))
+        for menuItem in menu.items {
+            menuItem.target = self
+        }
+        item.menu = menu
+        statusItem = item
+    }
+
+    private func installHotKey() {
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+        let selfPointer = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        let handler: EventHandlerUPP = { _, event, userData in
+            guard let event, let userData else { return noErr }
+
+            var hotKeyID = EventHotKeyID()
+            let status = GetEventParameter(
+                event,
+                EventParamName(kEventParamDirectObject),
+                EventParamType(typeEventHotKeyID),
+                nil,
+                MemoryLayout<EventHotKeyID>.size,
+                nil,
+                &hotKeyID
+            )
+            guard status == noErr, hotKeyID.id == AppsnapHotKey.identifier else {
+                return noErr
+            }
+
+            let rawPointer = UInt(bitPattern: userData)
+            Task { @MainActor in
+                let pointer = UnsafeRawPointer(bitPattern: rawPointer)!
+                let appsnap = Unmanaged<Appsnap>.fromOpaque(pointer).takeUnretainedValue()
+                appsnap.runCapture()
+            }
+            return noErr
+        }
+
+        let installStatus = InstallEventHandler(
+            GetApplicationEventTarget(),
+            handler,
+            1,
+            &eventType,
+            selfPointer,
+            &eventHandlerRef
+        )
+        guard installStatus == noErr else {
+            fputs("Appsnap: hotkey handler registration failed with status \(installStatus).\n", stderr)
+            return
+        }
+
+        let hotKeyID = EventHotKeyID(
+            signature: AppsnapHotKey.signature,
+            id: AppsnapHotKey.identifier
+        )
+        let registerStatus = RegisterEventHotKey(
+            UInt32(kVK_ANSI_S),
+            UInt32(optionKey | cmdKey),
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
+        if registerStatus != noErr {
+            fputs("Appsnap: Option-Command-S registration failed with status \(registerStatus).\n", stderr)
+        } else {
+            print("Appsnap: global hotkey Option-Command-S registered.")
+            fflush(stdout)
+        }
+    }
+
+    @objc @MainActor private func runFromMenu() {
+        runCapture()
+    }
+
+    @MainActor
+    private func runCapture() {
+        guard !isRunningCapture else { return }
+        isRunningCapture = true
+        Task {
+            do {
+                let result = try await Self.run(options: Options())
+                print(result)
+            } catch {
+                fputs("Appsnap: \(error.localizedDescription)\n", stderr)
+            }
+            await MainActor.run {
+                self.isRunningCapture = false
+            }
+        }
+    }
+
+    @objc @MainActor private func openAccessibilitySettings() {
+        openSettings("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+    }
+
+    @objc @MainActor private func openScreenRecordingSettings() {
+        openSettings("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
+    }
+
+    @MainActor
+    private func openSettings(_ urlString: String) {
+        guard let url = URL(string: urlString) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc @MainActor private func quit() {
+        NSApplication.shared.terminate(nil)
     }
 
     static func writeResult(_ result: String, to path: String?) {
@@ -187,22 +386,33 @@ struct Appsnap {
 
         while let argument = iterator.next() {
             switch argument {
-            case "--dry-run": options.dryRun = true
-            case "--copy-only": options.copyOnly = true
-            case "--verbose", "-v": options.verbose = true
+            case "--run-once": options.runOnce = true
+            case "--dry-run":
+                options.runOnce = true
+                options.dryRun = true
+            case "--copy-only":
+                options.runOnce = true
+                options.copyOnly = true
+            case "--verbose", "-v":
+                options.runOnce = true
+                options.verbose = true
             case "--activation-delay":
+                options.runOnce = true
                 if let value = iterator.next(), let delay = Double(value) {
                     options.activationDelay = max(0, delay)
                 }
             case "--paste-delay":
+                options.runOnce = true
                 if let value = iterator.next(), let delay = Double(value) {
                     options.pasteDelay = max(0, delay)
                 }
             case "--result-file":
+                options.runOnce = true
                 options.resultFile = iterator.next()
             case "--help", "-h":
                 print("""
                 Usage: appsnap [options]
+                  --run-once                   Run capture once and exit
                   --dry-run                    Inspect without capturing or pasting
                   --copy-only                  Capture without changing focus or pasting
                   --activation-delay SECONDS   Wait after activating the behind window

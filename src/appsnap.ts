@@ -15,8 +15,7 @@ function lastLine(value: string) {
 
 export default async function command() {
   const appPath =
-    process.env.APPSNAP_APP ??
-    join(homedir(), ".local", "Applications", "Appsnap.app");
+    process.env.APPSNAP_APP ?? join(homedir(), "Applications", "Appsnap.app");
   const resultPath = join(tmpdir(), `appsnap-result-${randomUUID()}.txt`);
   console.log("Appsnap launcher invoked", appPath);
 
@@ -24,7 +23,15 @@ export default async function command() {
     await unlink(resultPath).catch(() => undefined);
     await execFileAsync(
       "/usr/bin/open",
-      ["-W", "-n", appPath, "--args", "--result-file", resultPath],
+      [
+        "-W",
+        "-n",
+        appPath,
+        "--args",
+        "--run-once",
+        "--result-file",
+        resultPath,
+      ],
       { timeout: 15_000, killSignal: "SIGKILL" },
     );
     const result = await readFile(resultPath, "utf8");
