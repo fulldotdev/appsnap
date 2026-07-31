@@ -1,6 +1,8 @@
 import { showHUD } from "@raycast/api";
 import { execFile } from "node:child_process";
-import { homedir } from "node:os";
+import { randomUUID } from "node:crypto";
+import { readFile, unlink } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
@@ -12,21 +14,32 @@ function lastLine(value: string) {
 }
 
 export default async function command() {
-  const helperPath =
-    process.env.APPSNAP_BIN ?? join(homedir(), ".local", "bin", "appsnap");
+  const appPath =
+    process.env.APPSNAP_APP ??
+    join(homedir(), ".local", "Applications", "Appsnap.app");
+  const resultPath = join(tmpdir(), `appsnap-result-${randomUUID()}.txt`);
+  console.log("Appsnap launcher invoked", appPath);
 
   try {
-    const { stdout } = await execFileAsync(helperPath, [], {
-      timeout: 12_000,
-      killSignal: "SIGKILL",
-    });
-    const message = lastLine(stdout);
-    await showHUD(message || "Appsnap complete.");
+    await unlink(resultPath).catch(() => undefined);
+    await execFileAsync(
+      "/usr/bin/open",
+      ["-W", "-n", appPath, "--args", "--result-file", resultPath],
+      { timeout: 15_000, killSignal: "SIGKILL" },
+    );
+    const result = await readFile(resultPath, "utf8");
+    console.log("Appsnap helper completed", result.trim());
+    await showHUD(lastLine(result) || "Appsnap complete.");
   } catch (error) {
     const failure = error as Error & { stderr?: string };
+    console.error("Appsnap helper failed", failure);
+    const result = await readFile(resultPath, "utf8").catch(() => "");
     const message =
+      lastLine(result) ||
       (failure.stderr ? lastLine(failure.stderr) : undefined) ||
       failure.message;
     await showHUD(message);
+  } finally {
+    await unlink(resultPath).catch(() => undefined);
   }
 }

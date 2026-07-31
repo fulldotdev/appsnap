@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import CoreGraphics
 import Foundation
+import ScreenCaptureKit
 
 struct Options {
     var dryRun = false
@@ -9,6 +10,7 @@ struct Options {
     var verbose = false
     var activationDelay: TimeInterval = 0.7
     var pasteDelay: TimeInterval = 0.15
+    var resultFile: String?
 }
 
 struct WindowInfo: CustomStringConvertible {
@@ -42,9 +44,9 @@ enum AppsnapError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .accessibilityPermission:
-            return "Accessibility permission is required for the launcher (normally Raycast)."
+            return "Enable Appsnap in System Settings → Privacy & Security → Accessibility."
         case .screenRecordingPermission:
-            return "Screen Recording permission is required for the launcher (normally Raycast)."
+            return "Enable Appsnap in System Settings → Privacy & Security → Screen & System Audio Recording."
         case .noCurrentWindow:
             return "Could not find the current window."
         case .noBehindWindow:
@@ -59,20 +61,40 @@ enum AppsnapError: LocalizedError {
 
 @main
 struct Appsnap {
-    static func main() {
+    static func main() async {
+        let watchdog = Task.detached(priority: .background) {
+            try? await Task.sleep(nanoseconds: 12_000_000_000)
+            if !Task.isCancelled { _exit(124) }
+        }
+        defer { watchdog.cancel() }
+
+        let options = parseOptions()
         do {
-            print(try run(options: parseOptions()))
+            let result = try await run(options: options)
+            print(result)
+            writeResult(result, to: options.resultFile)
         } catch {
-            fputs("Appsnap: \(error.localizedDescription)\n", stderr)
+            let result = "Appsnap: \(error.localizedDescription)"
+            writeResult(result, to: options.resultFile)
+            fputs("\(result)\n", stderr)
             exit(1)
         }
     }
 
-    static func run(options: Options) throws -> String {
-        guard AXIsProcessTrusted() else {
+    static func writeResult(_ result: String, to path: String?) {
+        guard let path else { return }
+        try? result.write(toFile: path, atomically: true, encoding: .utf8)
+    }
+
+    static func run(options: Options) async throws -> String {
+        let accessibilityOptions = [
+            "AXTrustedCheckOptionPrompt": true,
+        ] as CFDictionary
+        guard AXIsProcessTrustedWithOptions(accessibilityOptions) else {
             throw AppsnapError.accessibilityPermission
         }
-        guard options.dryRun || CGPreflightScreenCaptureAccess() else {
+        if !options.dryRun, !CGPreflightScreenCaptureAccess() {
+            _ = CGRequestScreenCaptureAccess()
             throw AppsnapError.screenRecordingPermission
         }
 
@@ -85,7 +107,7 @@ struct Appsnap {
         }
         let behind = windows[1]
         FocusInspector.enableEnhancedAccessibility(for: current.ownerPID)
-        Thread.sleep(forTimeInterval: 0.05)
+        await pause(0.05)
         let initialFocus = FocusInspector.currentFocus()
         let currentHasTextCursor = initialFocus.map {
             $0.isTextInput && FocusInspector.belongsToWindow($0, window: current)
@@ -105,7 +127,7 @@ struct Appsnap {
         }
 
         if currentHasTextCursor {
-            try Capturer.copyWindowToClipboard(behind.id)
+            try await Capturer.copyWindowToClipboard(behind.id)
             if options.copyOnly {
                 return "Captured \(behind.ownerName) to the clipboard."
             }
@@ -118,25 +140,25 @@ struct Appsnap {
                 throw AppsnapError.pasteTargetUnavailable
             }
 
-            Thread.sleep(forTimeInterval: options.pasteDelay)
+            await pause(options.pasteDelay)
             try Paster.commandV()
             return "Pasted \(behind.ownerName) into \(current.ownerName)."
         }
 
-        try Capturer.copyWindowToClipboard(current.id)
+        try await Capturer.copyWindowToClipboard(current.id)
         if options.copyOnly {
             return "Captured \(current.ownerName) to the clipboard."
         }
 
         let activated = WindowActivator.activate(behind)
         if activated {
-            Thread.sleep(forTimeInterval: options.activationDelay)
+            await pause(options.activationDelay)
             if WindowInspector.frontmostWindow()?.id == behind.id,
                let focus = FocusInspector.currentFocus(),
                focus.isTextInput,
                FocusInspector.belongsToWindow(focus, window: behind)
             {
-                Thread.sleep(forTimeInterval: options.pasteDelay)
+                await pause(options.pasteDelay)
                 try Paster.commandV()
                 return "Pasted \(current.ownerName) into \(behind.ownerName)."
             }
@@ -144,6 +166,12 @@ struct Appsnap {
 
         _ = WindowActivator.activate(current)
         throw AppsnapError.pasteTargetUnavailable
+    }
+
+    static func pause(_ seconds: TimeInterval) async {
+        try? await Task.sleep(
+            nanoseconds: UInt64(max(0, seconds) * 1_000_000_000)
+        )
     }
 
     static func parseOptions() -> Options {
@@ -163,6 +191,8 @@ struct Appsnap {
                 if let value = iterator.next(), let delay = Double(value) {
                     options.pasteDelay = max(0, delay)
                 }
+            case "--result-file":
+                options.resultFile = iterator.next()
             case "--help", "-h":
                 print("""
                 Usage: appsnap [options]
@@ -170,6 +200,7 @@ struct Appsnap {
                   --copy-only                  Capture without changing focus or pasting
                   --activation-delay SECONDS   Wait after activating the behind window
                   --paste-delay SECONDS        Wait before Command-V
+                  --result-file PATH           Write final status for a launcher
                   --verbose, -v                 Print diagnostics
                 """)
                 exit(0)
@@ -437,15 +468,34 @@ enum WindowActivator {
 }
 
 enum Capturer {
-    static func copyWindowToClipboard(_ id: CGWindowID) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        process.arguments = ["-x", "-o", "-c", "-l", String(id)]
-        try process.run()
-        process.waitUntilExit()
+    static func copyWindowToClipboard(_ id: CGWindowID) async throws {
+        let content = try await SCShareableContent.excludingDesktopWindows(
+            false,
+            onScreenWindowsOnly: true
+        )
+        guard let window = content.windows.first(where: { $0.windowID == id }) else {
+            throw AppsnapError.captureFailed(1)
+        }
 
-        guard process.terminationStatus == 0 else {
-            throw AppsnapError.captureFailed(process.terminationStatus)
+        let filter = SCContentFilter(desktopIndependentWindow: window)
+        let configuration = SCStreamConfiguration()
+        configuration.showsCursor = false
+        configuration.width = max(1, Int(window.frame.width))
+        configuration.height = max(1, Int(window.frame.height))
+
+        let image = try await SCScreenshotManager.captureImage(
+            contentFilter: filter,
+            configuration: configuration
+        )
+        let representation = NSBitmapImageRep(cgImage: image)
+        guard let png = representation.representation(using: .png, properties: [:]) else {
+            throw AppsnapError.captureFailed(1)
+        }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        guard pasteboard.setData(png, forType: .png) else {
+            throw AppsnapError.captureFailed(1)
         }
     }
 }

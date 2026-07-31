@@ -16,8 +16,8 @@ There is no window picker, app-name configuration, Apple Developer account, Deve
 The repository contains:
 
 - a native Swift helper at `Sources/Appsnap/Appsnap.swift`;
-- a standard Raycast no-view command that launches `~/.local/bin/appsnap`;
-- `scripts/install-helper.sh`, which builds the helper locally and copies it there.
+- a standard Raycast no-view command that launches the locally installed `Appsnap.app` helper;
+- `scripts/install-helper.sh`, which builds the helper locally and installs it under `~/.local/Applications`.
 
 Install or update the helper:
 
@@ -33,12 +33,12 @@ Run `pnpm dev`, find **Appsnap** in Raycast, and assign it a direct global hotke
 
 ## Permissions
 
-Grant **Raycast**:
+Grant the locally built **Appsnap** helper:
 
 - Accessibility, for exact focus/window verification and Command-V;
 - Screen & System Audio Recording, for window capture.
 
-No System Events Automation permission is needed by the native helper.
+The first run requests these permissions through macOS System Settings. No System Events Automation permission is needed.
 
 ## Development
 
