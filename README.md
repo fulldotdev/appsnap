@@ -2,7 +2,7 @@
 
 **Snap any app into your cursor.**
 
-Appsnap is a native local macOS menu-bar app with a global Option-Command-S hotkey. A thin Raycast command remains available as an optional one-shot launcher.
+Appsnap is a native local macOS menu-bar app with a configurable global hotkey. The default is Option-Command-S. A thin Raycast command remains available as an optional one-shot launcher.
 
 - If the current window has a verified text cursor, Appsnap captures the normal window directly behind it and pastes the image at the current cursor.
 - Otherwise, Appsnap captures the current window, activates only the directly-behind window, and pastes only when that exact window and a text cursor are verified.
@@ -31,13 +31,18 @@ The binary is built on this Mac with Swift Package Manager. Because it is built 
 
 ## Standalone hotkey
 
-After installation, Appsnap stays running as a menu-bar app and registers Option-Command-S globally. Press that hotkey from the app where your cursor already is. Appsnap does not bring itself frontmost and does not require notifications.
+After installation, Appsnap stays running as a menu-bar app and registers Option-Command-S globally by default. Press that hotkey from the app where your cursor already is. Appsnap does not bring itself frontmost and does not require notifications.
 
 The menu-bar item includes:
 
 - Run Appsnap;
+- Global Shortcut, showing the current shortcut and opening a native recorder;
 - links to Accessibility and Screen Recording settings;
 - Quit Appsnap.
+
+To change the shortcut, open **Global Shortcut** from the Appsnap menu and press a standard macOS shortcut with at least one modifier plus one non-modifier key. Appsnap stores the keycode and Carbon modifiers in UserDefaults, then unregisters and re-registers the Carbon hotkey immediately. If macOS rejects the new shortcut, Appsnap keeps the previous shortcut active and shows an alert.
+
+In the recorder, Escape cancels and Delete restores the default Option-Command-S shortcut.
 
 ## Optional Raycast shortcut
 

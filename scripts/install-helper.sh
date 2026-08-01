@@ -40,6 +40,6 @@ ln -sfn "$APP_BIN" "$BIN_DIR/appsnap"
 printf 'Installed Appsnap helper app at %s\n' "$APP_DIR"
 printf 'Linked CLI at %s\n' "$BIN_DIR/appsnap"
 printf 'Bootstrapped login item at %s\n' "$LAUNCH_AGENT"
-printf 'Global hotkey: Option-Command-S\n'
+printf 'Default global hotkey: Option-Command-S (change it from the Appsnap menu)\n'
 printf 'Log: %s\n' "$LOG_FILE"
 printf 'No Developer ID signing, notarization, or Apple Developer account is used.\n'

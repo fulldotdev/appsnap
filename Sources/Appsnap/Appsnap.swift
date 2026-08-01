@@ -78,9 +78,377 @@ enum AppsnapHotKey {
     static let identifier = UInt32(1)
 }
 
+struct KeyboardShortcut: Equatable {
+    static let defaultShortcut = KeyboardShortcut(
+        keyCode: UInt32(kVK_ANSI_S),
+        carbonModifiers: UInt32(optionKey | cmdKey)
+    )
+
+    private static let keyCodeDefaultsKey = "globalShortcutKeyCode"
+    private static let modifiersDefaultsKey = "globalShortcutCarbonModifiers"
+
+    let keyCode: UInt32
+    let carbonModifiers: UInt32
+
+    var isValid: Bool {
+        keyCode <= UInt16.max && carbonModifiers != 0
+    }
+
+    static func load(from defaults: UserDefaults = .standard) -> KeyboardShortcut {
+        guard defaults.object(forKey: keyCodeDefaultsKey) != nil,
+              defaults.object(forKey: modifiersDefaultsKey) != nil
+        else { return defaultShortcut }
+
+        let shortcut = KeyboardShortcut(
+            keyCode: UInt32(defaults.integer(forKey: keyCodeDefaultsKey)),
+            carbonModifiers: UInt32(defaults.integer(forKey: modifiersDefaultsKey))
+        )
+        return shortcut.isValid ? shortcut : defaultShortcut
+    }
+
+    func save(to defaults: UserDefaults = .standard) {
+        defaults.set(Int(keyCode), forKey: Self.keyCodeDefaultsKey)
+        defaults.set(Int(carbonModifiers), forKey: Self.modifiersDefaultsKey)
+    }
+
+    var displayString: String {
+        "\(modifierDisplayString)\(Self.keyDisplayString(for: keyCode))"
+    }
+
+    var menuModifierMask: NSEvent.ModifierFlags {
+        var flags: NSEvent.ModifierFlags = []
+        if carbonModifiers & UInt32(cmdKey) != 0 { flags.insert(.command) }
+        if carbonModifiers & UInt32(optionKey) != 0 { flags.insert(.option) }
+        if carbonModifiers & UInt32(controlKey) != 0 { flags.insert(.control) }
+        if carbonModifiers & UInt32(shiftKey) != 0 { flags.insert(.shift) }
+        return flags
+    }
+
+    var menuKeyEquivalent: String {
+        Self.menuKeyEquivalent(for: keyCode)
+    }
+
+    private var modifierDisplayString: String {
+        var value = ""
+        if carbonModifiers & UInt32(controlKey) != 0 { value += "⌃" }
+        if carbonModifiers & UInt32(optionKey) != 0 { value += "⌥" }
+        if carbonModifiers & UInt32(shiftKey) != 0 { value += "⇧" }
+        if carbonModifiers & UInt32(cmdKey) != 0 { value += "⌘" }
+        return value
+    }
+
+    private static func keyDisplayString(for keyCode: UInt32) -> String {
+        switch Int(keyCode) {
+        case kVK_ANSI_A: return "A"
+        case kVK_ANSI_B: return "B"
+        case kVK_ANSI_C: return "C"
+        case kVK_ANSI_D: return "D"
+        case kVK_ANSI_E: return "E"
+        case kVK_ANSI_F: return "F"
+        case kVK_ANSI_G: return "G"
+        case kVK_ANSI_H: return "H"
+        case kVK_ANSI_I: return "I"
+        case kVK_ANSI_J: return "J"
+        case kVK_ANSI_K: return "K"
+        case kVK_ANSI_L: return "L"
+        case kVK_ANSI_M: return "M"
+        case kVK_ANSI_N: return "N"
+        case kVK_ANSI_O: return "O"
+        case kVK_ANSI_P: return "P"
+        case kVK_ANSI_Q: return "Q"
+        case kVK_ANSI_R: return "R"
+        case kVK_ANSI_S: return "S"
+        case kVK_ANSI_T: return "T"
+        case kVK_ANSI_U: return "U"
+        case kVK_ANSI_V: return "V"
+        case kVK_ANSI_W: return "W"
+        case kVK_ANSI_X: return "X"
+        case kVK_ANSI_Y: return "Y"
+        case kVK_ANSI_Z: return "Z"
+        case kVK_ANSI_0: return "0"
+        case kVK_ANSI_1: return "1"
+        case kVK_ANSI_2: return "2"
+        case kVK_ANSI_3: return "3"
+        case kVK_ANSI_4: return "4"
+        case kVK_ANSI_5: return "5"
+        case kVK_ANSI_6: return "6"
+        case kVK_ANSI_7: return "7"
+        case kVK_ANSI_8: return "8"
+        case kVK_ANSI_9: return "9"
+        case kVK_Space: return "Space"
+        case kVK_Return: return "Return"
+        case kVK_Tab: return "Tab"
+        case kVK_Delete: return "Delete"
+        case kVK_ForwardDelete: return "Forward Delete"
+        case kVK_Escape: return "Escape"
+        case kVK_Home: return "Home"
+        case kVK_End: return "End"
+        case kVK_PageUp: return "Page Up"
+        case kVK_PageDown: return "Page Down"
+        case kVK_LeftArrow: return "←"
+        case kVK_RightArrow: return "→"
+        case kVK_DownArrow: return "↓"
+        case kVK_UpArrow: return "↑"
+        case kVK_F1: return "F1"
+        case kVK_F2: return "F2"
+        case kVK_F3: return "F3"
+        case kVK_F4: return "F4"
+        case kVK_F5: return "F5"
+        case kVK_F6: return "F6"
+        case kVK_F7: return "F7"
+        case kVK_F8: return "F8"
+        case kVK_F9: return "F9"
+        case kVK_F10: return "F10"
+        case kVK_F11: return "F11"
+        case kVK_F12: return "F12"
+        case kVK_F13: return "F13"
+        case kVK_F14: return "F14"
+        case kVK_F15: return "F15"
+        case kVK_F16: return "F16"
+        case kVK_F17: return "F17"
+        case kVK_F18: return "F18"
+        case kVK_F19: return "F19"
+        case kVK_F20: return "F20"
+        default: return "Key \(keyCode)"
+        }
+    }
+
+    private static func menuKeyEquivalent(for keyCode: UInt32) -> String {
+        switch Int(keyCode) {
+        case kVK_ANSI_A: return "a"
+        case kVK_ANSI_B: return "b"
+        case kVK_ANSI_C: return "c"
+        case kVK_ANSI_D: return "d"
+        case kVK_ANSI_E: return "e"
+        case kVK_ANSI_F: return "f"
+        case kVK_ANSI_G: return "g"
+        case kVK_ANSI_H: return "h"
+        case kVK_ANSI_I: return "i"
+        case kVK_ANSI_J: return "j"
+        case kVK_ANSI_K: return "k"
+        case kVK_ANSI_L: return "l"
+        case kVK_ANSI_M: return "m"
+        case kVK_ANSI_N: return "n"
+        case kVK_ANSI_O: return "o"
+        case kVK_ANSI_P: return "p"
+        case kVK_ANSI_Q: return "q"
+        case kVK_ANSI_R: return "r"
+        case kVK_ANSI_S: return "s"
+        case kVK_ANSI_T: return "t"
+        case kVK_ANSI_U: return "u"
+        case kVK_ANSI_V: return "v"
+        case kVK_ANSI_W: return "w"
+        case kVK_ANSI_X: return "x"
+        case kVK_ANSI_Y: return "y"
+        case kVK_ANSI_Z: return "z"
+        case kVK_ANSI_0: return "0"
+        case kVK_ANSI_1: return "1"
+        case kVK_ANSI_2: return "2"
+        case kVK_ANSI_3: return "3"
+        case kVK_ANSI_4: return "4"
+        case kVK_ANSI_5: return "5"
+        case kVK_ANSI_6: return "6"
+        case kVK_ANSI_7: return "7"
+        case kVK_ANSI_8: return "8"
+        case kVK_ANSI_9: return "9"
+        case kVK_Space: return " "
+        default: return ""
+        }
+    }
+}
+
+@MainActor
+final class ShortcutRecorderWindowController: NSWindowController {
+    init(
+        currentShortcut: KeyboardShortcut,
+        onRecord: @escaping @MainActor (KeyboardShortcut) -> Void,
+        onCancel: @escaping @MainActor () -> Void,
+        onRestoreDefault: @escaping @MainActor () -> Void
+    ) {
+        let recorderView = ShortcutRecorderView(
+            currentShortcut: currentShortcut,
+            onRecord: onRecord,
+            onCancel: onCancel,
+            onRestoreDefault: onRestoreDefault
+        )
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 170),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = "Set Appsnap Shortcut"
+        panel.contentView = recorderView
+        panel.isReleasedWhenClosed = false
+        panel.center()
+        super.init(window: panel)
+        panel.delegate = self
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        guard let window, let recorderView = window.contentView as? ShortcutRecorderView else { return }
+        window.makeKeyAndOrderFront(sender)
+        window.makeFirstResponder(recorderView)
+    }
+}
+
+extension ShortcutRecorderWindowController: NSWindowDelegate {
+    func windowWillClose(_ notification: Notification) {
+        (window?.contentView as? ShortcutRecorderView)?.cancel()
+    }
+}
+
+@MainActor
+final class ShortcutRecorderView: NSView {
+    private let statusLabel = NSTextField(labelWithString: "")
+    private let onRecord: @MainActor (KeyboardShortcut) -> Void
+    private let onCancel: @MainActor () -> Void
+    private let onRestoreDefault: @MainActor () -> Void
+    private var didFinish = false
+
+    init(
+        currentShortcut: KeyboardShortcut,
+        onRecord: @escaping @MainActor (KeyboardShortcut) -> Void,
+        onCancel: @escaping @MainActor () -> Void,
+        onRestoreDefault: @escaping @MainActor () -> Void
+    ) {
+        self.onRecord = onRecord
+        self.onCancel = onCancel
+        self.onRestoreDefault = onRestoreDefault
+        super.init(frame: .zero)
+        buildView(currentShortcut: currentShortcut)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func keyDown(with event: NSEvent) {
+        if Int(event.keyCode) == kVK_Escape {
+            cancel()
+            return
+        }
+
+        if Int(event.keyCode) == kVK_Delete, carbonModifiers(from: event.modifierFlags) == 0 {
+            finish()
+            onRestoreDefault()
+            return
+        }
+
+        let modifiers = carbonModifiers(from: event.modifierFlags)
+        guard modifiers != 0, !Self.isModifierKeyCode(Int(event.keyCode)) else {
+            statusLabel.stringValue = "Press at least one modifier plus one regular key."
+            NSSound.beep()
+            return
+        }
+
+        finish()
+        onRecord(KeyboardShortcut(
+            keyCode: UInt32(event.keyCode),
+            carbonModifiers: modifiers
+        ))
+    }
+
+    func cancel() {
+        guard !didFinish else { return }
+        finish()
+        onCancel()
+    }
+
+    private func buildView(currentShortcut: KeyboardShortcut) {
+        let titleLabel = NSTextField(labelWithString: "Press the new global shortcut")
+        titleLabel.font = .systemFont(ofSize: 15, weight: .semibold)
+        titleLabel.alignment = .center
+
+        let detailLabel = NSTextField(labelWithString: "Use at least one modifier and one non-modifier key.")
+        detailLabel.font = .systemFont(ofSize: 12)
+        detailLabel.textColor = .secondaryLabelColor
+        detailLabel.alignment = .center
+
+        statusLabel.stringValue = "Current: \(currentShortcut.displayString)"
+        statusLabel.font = .monospacedSystemFont(ofSize: 18, weight: .medium)
+        statusLabel.alignment = .center
+
+        let deleteLabel = NSTextField(labelWithString: "Escape cancels. Delete restores ⌥⌘S.")
+        deleteLabel.font = .systemFont(ofSize: 11)
+        deleteLabel.textColor = .tertiaryLabelColor
+        deleteLabel.alignment = .center
+
+        let cancelButton = NSButton(title: "Cancel", target: self, action: #selector(cancelButtonPressed))
+        cancelButton.bezelStyle = .rounded
+
+        let defaultButton = NSButton(title: "Restore Default", target: self, action: #selector(defaultButtonPressed))
+        defaultButton.bezelStyle = .rounded
+
+        let buttonStack = NSStackView(views: [defaultButton, cancelButton])
+        buttonStack.orientation = .horizontal
+        buttonStack.alignment = .centerY
+        buttonStack.spacing = 8
+
+        let stack = NSStackView(views: [titleLabel, detailLabel, statusLabel, deleteLabel, buttonStack])
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.spacing = 10
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
+            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    @objc private func cancelButtonPressed() {
+        cancel()
+    }
+
+    @objc private func defaultButtonPressed() {
+        finish()
+        onRestoreDefault()
+    }
+
+    private func finish() {
+        didFinish = true
+        window?.close()
+    }
+
+    private func carbonModifiers(from flags: NSEvent.ModifierFlags) -> UInt32 {
+        var modifiers = UInt32(0)
+        if flags.contains(.command) { modifiers |= UInt32(cmdKey) }
+        if flags.contains(.option) { modifiers |= UInt32(optionKey) }
+        if flags.contains(.control) { modifiers |= UInt32(controlKey) }
+        if flags.contains(.shift) { modifiers |= UInt32(shiftKey) }
+        return modifiers
+    }
+
+    private static func isModifierKeyCode(_ keyCode: Int) -> Bool {
+        switch keyCode {
+        case kVK_Command, kVK_Shift, kVK_CapsLock, kVK_Option, kVK_Control,
+             kVK_RightShift, kVK_RightOption, kVK_RightControl, kVK_Function:
+            return true
+        default:
+            return false
+        }
+    }
+}
+
 @main
 final class Appsnap: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
+    private var runMenuItem: NSMenuItem?
+    private var shortcutMenuItem: NSMenuItem?
+    private var shortcutRecorder: ShortcutRecorderWindowController?
+    private var shortcut = KeyboardShortcut.load()
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
     private var isRunningCapture = false
@@ -126,7 +494,22 @@ final class Appsnap: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             setupStatusMenu()
         }
-        installHotKey()
+        guard installHotKeyHandler() else { return }
+        let registrationStatus = registerHotKey(shortcut)
+        if registrationStatus != noErr, shortcut != .defaultShortcut {
+            fputs("Appsnap: \(shortcut.displayString) registration failed with status \(registrationStatus); trying default shortcut.\n", stderr)
+            shortcut = .defaultShortcut
+            shortcut.save()
+            let defaultStatus = registerHotKey(shortcut)
+            if defaultStatus != noErr {
+                fputs("Appsnap: Option-Command-S registration failed with status \(defaultStatus).\n", stderr)
+            }
+            Task { @MainActor in
+                updateShortcutMenuItems()
+            }
+        } else if registrationStatus != noErr {
+            fputs("Appsnap: Option-Command-S registration failed with status \(registrationStatus).\n", stderr)
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -147,17 +530,17 @@ final class Appsnap: NSObject, NSApplicationDelegate {
         let runItem = NSMenuItem(
             title: "Run Appsnap",
             action: #selector(runFromMenu),
-            keyEquivalent: "s"
+            keyEquivalent: shortcut.menuKeyEquivalent
         )
-        runItem.keyEquivalentModifierMask = [.command, .option]
+        runItem.keyEquivalentModifierMask = shortcut.menuModifierMask
         runItem.target = self
         menu.addItem(runItem)
         let shortcutItem = NSMenuItem(
-            title: "Global hotkey: ⌥⌘S",
-            action: nil,
+            title: "Global Shortcut: \(shortcut.displayString)",
+            action: #selector(openShortcutRecorder),
             keyEquivalent: ""
         )
-        shortcutItem.isEnabled = false
+        shortcutItem.target = self
         menu.addItem(shortcutItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(
@@ -181,9 +564,18 @@ final class Appsnap: NSObject, NSApplicationDelegate {
         }
         item.menu = menu
         statusItem = item
+        runMenuItem = runItem
+        shortcutMenuItem = shortcutItem
     }
 
-    private func installHotKey() {
+    @MainActor
+    private func updateShortcutMenuItems() {
+        runMenuItem?.keyEquivalent = shortcut.menuKeyEquivalent
+        runMenuItem?.keyEquivalentModifierMask = shortcut.menuModifierMask
+        shortcutMenuItem?.title = "Global Shortcut: \(shortcut.displayString)"
+    }
+
+    private func installHotKeyHandler() -> Bool {
         var eventType = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),
             eventKind: UInt32(kEventHotKeyPressed)
@@ -225,31 +617,106 @@ final class Appsnap: NSObject, NSApplicationDelegate {
         )
         guard installStatus == noErr else {
             fputs("Appsnap: hotkey handler registration failed with status \(installStatus).\n", stderr)
-            return
+            return false
         }
+        return true
+    }
 
+    private func registerHotKey(_ shortcut: KeyboardShortcut) -> OSStatus {
+        if let hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+            self.hotKeyRef = nil
+        }
         let hotKeyID = EventHotKeyID(
             signature: AppsnapHotKey.signature,
             id: AppsnapHotKey.identifier
         )
         let registerStatus = RegisterEventHotKey(
-            UInt32(kVK_ANSI_S),
-            UInt32(optionKey | cmdKey),
+            shortcut.keyCode,
+            shortcut.carbonModifiers,
             hotKeyID,
             GetApplicationEventTarget(),
             0,
             &hotKeyRef
         )
-        if registerStatus != noErr {
-            fputs("Appsnap: Option-Command-S registration failed with status \(registerStatus).\n", stderr)
-        } else {
-            print("Appsnap: global hotkey Option-Command-S registered.")
+        if registerStatus == noErr {
+            print("Appsnap: global hotkey \(shortcut.displayString) registered.")
             fflush(stdout)
         }
+        return registerStatus
     }
 
     @objc @MainActor private func runFromMenu() {
         runCapture()
+    }
+
+    @objc @MainActor private func openShortcutRecorder() {
+        shortcutRecorder = ShortcutRecorderWindowController(
+            currentShortcut: shortcut,
+            onRecord: { [weak self] newShortcut in
+                self?.applyShortcut(newShortcut)
+            },
+            onCancel: { [weak self] in
+                self?.shortcutRecorder = nil
+            },
+            onRestoreDefault: { [weak self] in
+                self?.applyShortcut(.defaultShortcut)
+            }
+        )
+        shortcutRecorder?.showWindow(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
+    @MainActor
+    private func applyShortcut(_ newShortcut: KeyboardShortcut) {
+        shortcutRecorder = nil
+        guard newShortcut != shortcut else { return }
+
+        let previousShortcut = shortcut
+        let status = registerHotKey(newShortcut)
+        guard status == noErr else {
+            let restoreStatus = registerHotKey(previousShortcut)
+            showShortcutRegistrationAlert(
+                shortcut: newShortcut,
+                status: status,
+                previousShortcut: previousShortcut,
+                restoreStatus: restoreStatus
+            )
+            return
+        }
+
+        shortcut = newShortcut
+        shortcut.save()
+        updateShortcutMenuItems()
+    }
+
+    @MainActor
+    private func showShortcutRegistrationAlert(
+        shortcut: KeyboardShortcut,
+        status: OSStatus,
+        previousShortcut: KeyboardShortcut,
+        restoreStatus: OSStatus
+    ) {
+        let alert = NSAlert()
+        alert.messageText = "Shortcut Not Available"
+        if restoreStatus == noErr {
+            alert.informativeText = """
+            Appsnap could not register \(shortcut.displayString). It may already be used by another app or by macOS.
+
+            The previous shortcut, \(previousShortcut.displayString), is still active.
+            Carbon status: \(status)
+            """
+        } else {
+            alert.informativeText = """
+            Appsnap could not register \(shortcut.displayString), and macOS also rejected the previous shortcut \(previousShortcut.displayString).
+
+            Open the shortcut recorder and choose another shortcut.
+            Carbon status: \(status), restore status: \(restoreStatus)
+            """
+        }
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     @MainActor
