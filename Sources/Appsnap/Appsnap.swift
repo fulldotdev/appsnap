@@ -523,8 +523,15 @@ final class Appsnap: NSObject, NSApplicationDelegate {
 
     @MainActor
     private func setupStatusMenu() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.title = "Appsnap"
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        if let button = item.button {
+            button.image = NSImage(
+                systemSymbolName: "rectangle.on.rectangle",
+                accessibilityDescription: "Appsnap"
+            )
+            button.image?.isTemplate = true
+            button.toolTip = "Appsnap"
+        }
 
         let menu = NSMenu()
         let runItem = NSMenuItem(
